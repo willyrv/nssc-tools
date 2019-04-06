@@ -242,3 +242,46 @@ def readScenario(textFile):
         newConf['migMatrix'] = migMatrix
         d['scenario'].append(newConf)
     return(d)
+
+def read_Pnisland_scenario(textFile):
+    """
+    Read the parameters of a Piecewise n-island
+    model
+    """
+    with open(textFile, 'r') as f:
+        text = f.read()
+    params = text.split("\n\n")
+    d = {}
+    d['nbLoci'] = eval(params[0].split("\n")[1])
+    sampling_same = "same" in params[1].split("\n")[1]
+    initial_params = params[2].split('\n')[1]
+    initial_params = [eval(i) for i in initial_params.split(' ')]
+    (n, M, c) = initial_params
+    if sampling_same:
+        sampling = '2' + ' 0' * (n-1)
+    else:
+        sampling = '1 1' + ' 0' * (n-2)
+    sampling = [eval(v) for v in sampling.split(' ')]
+    d['samplingVector'] = sampling
+    scenario = []
+    d['scenario'] = scenario
+    initial_scenario = {}
+    initial_scenario['time'] = 0
+    initial_scenario['n'] = n
+    initial_scenario['M'] = M
+    initial_scenario['c'] = c
+    scenario.append(initial_scenario)
+    for i in range(3, len(params)):
+        if "Demographic event" in params[i]:
+            newConf = {}
+            values = params[i].split("\n")[1]
+            values = [eval(v) for v in values.split(' ')]
+            (time, n, M, c) = values
+            newConf['time'] = time
+            newConf['n'] = n
+            newConf['M'] = M
+            newConf['c'] = c
+            scenario.append(newConf)
+    return d
+
+

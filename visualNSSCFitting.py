@@ -54,7 +54,7 @@ x_vector = [0.1*(np.exp(i * np.log(1+10*end)/n)-1) for i in range(n+1)]
 # rescaling by 0.1
 scaling_factor = 0.1
 
-#######  Creatinge the NSSC models ################
+#######  Creating the NSSC models ################
 # For humans
 d_humans = readScenario(human_scenario_file)
 current_d_humans = copy.deepcopy(d_humans)

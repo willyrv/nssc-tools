@@ -56,8 +56,6 @@ class NSSC:
             initial_state_vect[initial_state_ix] = 1
         Qmatrix_list = []
         time_list = []
-        diagonalizedQ_list = []
-        cum_prods = []
         for i in range(len(model_params['scenario'])):
             d = model_params['scenario'][i]
             time_list.append(np.real(d['time']))
@@ -66,26 +64,11 @@ class NSSC:
                 d['demeSizes']), lineages_are_dist)
             Qmatrix_list.append(Q)
             # Compute the eigenvalues and vectors for the diagonalization
-            eigenval, eigenvect = np.linalg.eig(Q)
-            # Put the eigenvalues in a diagonal
-            D = np.diag(eigenval)
-            A = eigenvect
-            Ainv = np.linalg.inv(A)
-            diagonalizedQ_list.append((A, D, Ainv))
-            if len(cum_prods) > 0:
-                t = time_list[-1] - time_list[-2]
-                A, D, Ainv = diagonalizedQ_list[i-1]
-                exp_tD = np.diag(np.exp(t * np.diag(D)))
-                P_delta_t = A.dot(exp_tD).dot(Ainv)
-                cum_prods.append(cum_prods[-1].dot(P_delta_t))
-            else:
-                cum_prods.append(np.eye(len(initial_state_vect)))
         self.time_list = time_list
         self.Qmatrix_list = Qmatrix_list
-        self.diagonalizedQ_list = diagonalizedQ_list
         self.initial_state_vect = initial_state_vect
         self.initial_state_ix = initial_state_ix
-        self.cum_prods = cum_prods
+        self.create_cum_prods_list()
 
     def createQmatrix(self, migMatrix, demeSizeVector, lineagesAreDist=False):
         """
@@ -136,6 +119,35 @@ class NSSC:
             Q[i, i] = -sum(Q[i, noDiagColumn])
         return(Q)
 
+    def create_cum_prods_list(self):
+        """
+        Create the list of cumulative product of Pt and the
+        list of diagonalized Q_matrices
+        """
+        diagonalizedQ_list = []
+        cum_prods = [np.eye(len(self.initial_state_vect))]
+        for i in range(len(self.Qmatrix_list)-1):
+            (A, D, Ainv) = self.diagonalize_Q(self.Qmatrix_list[i])
+            diagonalizedQ_list.append((A, D, Ainv))
+            t = self.time_list[i+1] - self.time_list[i]
+            exp_tD = np.diag(np.exp(t * np.diag(D)))
+            P_delta_t = A.dot(exp_tD).dot(Ainv)
+            cum_prods.append(cum_prods[-1].dot(P_delta_t))
+        (A, D, Ainv) = self.diagonalize_Q(self.Qmatrix_list[-1])
+        diagonalizedQ_list.append((A, D, Ainv))
+        self.diagonalizedQ_list = diagonalizedQ_list
+        self.cum_prods = cum_prods
+
+    def diagonalize_Q(self, Q):
+        # Compute the eigenvalues and vectors for the diagonalization
+        eigenval, eigenvect = np.linalg.eig(Q)
+        # Put the eigenvalues in a diagonal
+        D = np.diag(eigenval)
+        A = eigenvect
+        Ainv = np.linalg.inv(A)
+        return (A, D, Ainv)
+
+
     def exponential_Q(self, t, i):
         """
         Computes e^{tQ_i} for a given t.
@@ -182,6 +194,68 @@ class NSSC:
         """
         Evaluates the IICR at time t for the current model
         """
-        F_x = self.cdfT2(t)
+        F_x = np.min(np.array([self.cdfT2(t), 1]))
         f_x = self.pdfT2(t)
         return(np.true_divide(1-F_x, f_x))
+
+class Pnisland(NSSC):
+    """
+    Piecewise n-island model
+    """
+
+    def __init__(self, model_params):
+        """
+        Create a Piecewise n-island model.
+        i.e.
+        - a list of Q-matrices based on the input parameters
+        - a list of time values indicating the time when some parameter change,
+        implying a change in the Q-matrix (the length of this list is equal to
+        one minus the lenth of the list of Q-matrices)
+        - the sampling
+        model_params: dictionary,
+            nbLoci: integer, how many independent loci to simulate
+                    (not used here)
+            samplingVector: list of integer, how many sequences to sample from
+                            each deme
+            scenario: list of dictionaries. Each dictionary contains:
+                    'time': real, the time to start with the configuration
+                            (from present to past) the first dictionary of
+                             the list has always 'time': 0
+                    'n': the number of demes
+                    'M': the gene flow. Note there is no need for a migration
+                          matrix because all demes exchange migrants with
+                          the same rate under this model. Backware migrations
+                          of one lineage occur with rate M.
+                    'demeSizes': the size of the demes. Note that all demes
+                                  has the same size because of the symmetry
+                                  of the n-island model.
+        """
+        sampling_vector = model_params['samplingVector']
+        if 2 in sampling_vector:
+            self.initial_state_vect = np.array([1, 0, 0]) # Same deme
+            self.initial_state_ix = 0
+        else:
+            self.initial_state_vect = np.array([0, 1, 0]) # Different demes
+            self.initial_state_ix = 1
+        Qmatrix_list = []
+        time_list = []
+        for i in range(len(model_params['scenario'])):
+            d = model_params['scenario'][i]
+            time_list.append(np.real(d['time']))
+            # Create the matrix Q
+            M = d['M']
+            n = d['n']
+            c = d['c']
+            Q = self.createQmatrix(n, M, c)
+            Qmatrix_list.append(Q)
+            # Compute the eigenvalues and vectors for the diagonalization
+        self.time_list = time_list
+        self.Qmatrix_list = Qmatrix_list
+        self.create_cum_prods_list()
+
+    def createQmatrix(self, n, M, c):
+
+        Q = np.array([[-M-c, M, c],
+                      [float(M)/(n-1), -float(M)/(n-1), 0],
+                      [0, 0, 0]])
+        return Q
